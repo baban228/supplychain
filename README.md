@@ -1,10 +1,10 @@
-# SupplyChain — следующий этап: отдельные базы для Supplier и Order
+# SupplyChain — три бизнес-сервиса, отдельные базы данных и API Gateway
 
 В проекте три бизнес-сервиса:
 
 - Supplier Service: Python / FastAPI, порт 8000 — PostgreSQL `supplier_db`.
 - Order Service: Java 17 / Spring Boot WebFlux, порт 8081 — PostgreSQL `order_db`.
-- Delivery Service: TypeScript / NestJS, порт 3000 — пока хранит данные в памяти.
+- Delivery Service: TypeScript / NestJS, порт 3000 — PostgreSQL `delivery_db`.
 
 ## Что добавлено на этом этапе
 
@@ -14,6 +14,7 @@ Order Service использует Spring Data R2DBC и отдельный Postg
 
 - `supplier-postgres-data` — данные Supplier Service.
 - `order-postgres-data` — данные Order Service.
+- `delivery-postgres-data` — данные Delivery Service.
 
 Сервисы не обращаются напрямую к таблицам друг друга.
 
@@ -26,7 +27,7 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Если `.env` уже создан на предыдущем этапе, просто проверь, что в нём есть `ORDER_DB_USER` и `ORDER_DB_PASSWORD`.
+Если `.env` уже создан на предыдущем этапе, проверь, что в нём есть переменные для всех трёх баз данных.
 
 ## Проверка
 
@@ -37,7 +38,7 @@ docker compose up --build
 - Delivery Swagger: http://localhost:3000/docs
 - Delivery health: http://localhost:3000/api/deliveries/health
 
-Порты PostgreSQL на компьютере: Supplier — `localhost:5433`, Order — `localhost:5434`. Внутри Docker Order Service подключается к `postgres-order:5432/order_db`.
+Порты PostgreSQL на компьютере: Supplier — `localhost:5433`, Order — `localhost:5434`, Delivery — `localhost:5435`. Внутри Docker каждый сервис подключается к своей базе по имени контейнера.
 
 ## Тест сохранения заказов
 
@@ -60,7 +61,7 @@ docker compose logs -f order-service
 
 ## Что ещё не реализовано
 
-Delivery Service пока использует память. Kafka, Consul, API Gateway, Traefik, интеграция с Auth Service, межсервисные HTTP-вызовы, Circuit Breaker, идемпотентность, Outbox и полноценный SSE-поток будут отдельными следующими этапами.
+Пока не реализованы Kafka, Consul, Traefik, интеграция с Auth Service, межсервисные HTTP-вызовы, Circuit Breaker, идемпотентность, Outbox и полноценный SSE-поток. API Gateway добавлен на этом этапе и пока выполняет маршрутизацию без проверки JWT.
 
 Учебные пароли из `.env.example` предназначены только для локального запуска.
 
@@ -73,3 +74,24 @@ Delivery Service пока использует память. Kafka, Consul, API 
 
 Do not let one service query another service's database directly. Inter-service
 communication will be implemented through HTTP and Kafka in later milestones.
+
+## API Gateway
+
+The project includes a Spring Cloud Gateway service on port `8080`. It is the single HTTP entry point for the business APIs:
+
+| Gateway URL | Routed service | Internal path |
+|---|---|---|
+| `http://localhost:8080/api/orders` | Order Service | `/orders` |
+| `http://localhost:8080/api/suppliers` | Supplier Service | `/suppliers` |
+| `http://localhost:8080/api/products` | Supplier Service | `/products` |
+| `http://localhost:8080/api/deliveries` | Delivery Service | `/api/deliveries` |
+
+Gateway health: `http://localhost:8080/actuator/health`.
+
+Start or rebuild the stack from the project root:
+
+```bash
+docker compose up --build
+```
+
+At this stage Gateway performs routing only. JWT validation / Auth Service integration will be added in a separate step. The individual services and their Swagger pages remain directly accessible during development.

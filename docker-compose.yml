@@ -108,6 +108,20 @@ services:
       timeout: 3s
       retries: 5
 
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      supplier-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      delivery-service:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   supplier-postgres-data:
   order-postgres-data:
