@@ -1,50 +1,57 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { DeliveryEntity, DeliveryStatus } from './entities/delivery.entity';
 
-export type DeliveryStatus = 'CREATED' | 'ASSIGNED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
-
-export interface Delivery {
-  id: string;
-  orderId: string;
-  deliveryAddress: string;
-  courierName?: string;
-  status: DeliveryStatus;
-  createdAt: string;
-}
+export type Delivery = DeliveryEntity;
 
 @Injectable()
 export class DeliveryService {
-  private readonly deliveries = new Map<string, Delivery>();
+  constructor(
+    @InjectRepository(DeliveryEntity)
+    private readonly deliveries: Repository<DeliveryEntity>,
+    private readonly dataSource: DataSource,
+  ) {}
 
-  create(input: { orderId: string; deliveryAddress: string; courierName?: string }): Delivery {
-    const delivery: Delivery = {
-      id: randomUUID(),
+  async create(input: {
+    orderId: string;
+    deliveryAddress: string;
+    courierName?: string;
+  }): Promise<Delivery> {
+    const delivery = this.deliveries.create({
       ...input,
       status: 'CREATED',
-      createdAt: new Date().toISOString(),
-    };
-    this.deliveries.set(delivery.id, delivery);
+    });
+    return this.deliveries.save(delivery);
+  }
+
+  async findAll(): Promise<Delivery[]> {
+    return this.deliveries.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async findOne(id: string): Promise<Delivery> {
+    const delivery = await this.deliveries.findOneBy({ id });
+    if (!delivery) {
+      throw new NotFoundException('Delivery not found');
+    }
     return delivery;
   }
 
-  findAll(): Delivery[] {
-    return [...this.deliveries.values()];
+  async findByOrder(orderId: string): Promise<Delivery[]> {
+    return this.deliveries.find({
+      where: { orderId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
-  findOne(id: string): Delivery {
-    const delivery = this.deliveries.get(id);
-    if (!delivery) throw new NotFoundException('Delivery not found');
-    return delivery;
+  async updateStatus(id: string, status: DeliveryStatus): Promise<Delivery> {
+    const delivery = await this.findOne(id);
+    delivery.status = status;
+    return this.deliveries.save(delivery);
   }
 
-  findByOrder(orderId: string): Delivery[] {
-    return this.findAll().filter((d) => d.orderId === orderId);
-  }
-
-  updateStatus(id: string, status: DeliveryStatus): Delivery {
-    const old = this.findOne(id);
-    const updated = { ...old, status };
-    this.deliveries.set(id, updated);
-    return updated;
+  async databaseHealth(): Promise<{ status: string }> {
+    await this.dataSource.query('SELECT 1');
+    return { status: 'UP' };
   }
 }

@@ -1,9 +1,10 @@
 import {
   BadRequestException, Body, Controller, Get, Param, Patch, Post, Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { DeliveryService, DeliveryStatus } from './delivery.service';
+import { DeliveryService } from './delivery.service';
+import { DeliveryStatus } from './entities/delivery.entity';
 
 class CreateDeliveryDto {
   @IsString()

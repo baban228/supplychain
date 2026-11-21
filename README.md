@@ -63,3 +63,13 @@ docker compose logs -f order-service
 Delivery Service пока использует память. Kafka, Consul, API Gateway, Traefik, интеграция с Auth Service, межсервисные HTTP-вызовы, Circuit Breaker, идемпотентность, Outbox и полноценный SSE-поток будут отдельными следующими этапами.
 
 Учебные пароли из `.env.example` предназначены только для локального запуска.
+
+
+## Database ownership
+
+- Supplier Service owns `supplier_db` (host port 5433).
+- Order Service owns `order_db` (host port 5434).
+- Delivery Service owns `delivery_db` (host port 5435).
+
+Do not let one service query another service's database directly. Inter-service
+communication will be implemented through HTTP and Kafka in later milestones.
