@@ -1,16 +1,38 @@
-# Supplier Service
+# Supplier Service (FastAPI + PostgreSQL)
 
-## Local run
+Port: `8000`  
+Swagger UI: http://localhost:8000/docs  
+Health (includes DB check): http://localhost:8000/health
+
+## Run with Docker Compose
+
+From the repository root:
+
 ```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+docker compose up --build
 ```
 
-Swagger: http://localhost:8000/docs  
-Health: http://localhost:8000/health
+Compose starts PostgreSQL first and waits until its health check succeeds.
+Supplier Service then connects to PostgreSQL and creates missing tables.
 
-Data is currently stored in memory and is lost when the process restarts.
-PostgreSQL persistence is a separate next step.
+## API
+
+- `POST /suppliers`
+- `GET /suppliers`
+- `GET /suppliers/{supplier_id}`
+- `POST /products`
+- `GET /products`
+- `GET /products/{product_id}`
+- `GET /products/{product_id}/availability?quantity=2`
+
+## Important
+
+Supplier data is now stored in PostgreSQL volume `supplier-postgres-data`.
+Restarting containers does not delete the data. To intentionally delete the
+database volume and all stored data, use:
+
+```bash
+docker compose down -v
+```
+
+Do not run that command if you want to preserve your test data.
