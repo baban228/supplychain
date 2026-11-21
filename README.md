@@ -1,73 +1,65 @@
-# SupplyChain — milestone 2: Supplier Service + PostgreSQL
+# SupplyChain — следующий этап: отдельные базы для Supplier и Order
 
-This starter contains three independently runnable business services:
+В проекте три бизнес-сервиса:
 
-- Supplier Service: Python / FastAPI, port 8000 — now uses PostgreSQL
-- Order Service: Java 17 / Spring Boot WebFlux, port 8081 — still in-memory
-- Delivery Service: TypeScript / NestJS, port 3000 — still in-memory
+- Supplier Service: Python / FastAPI, порт 8000 — PostgreSQL `supplier_db`.
+- Order Service: Java 17 / Spring Boot WebFlux, порт 8081 — PostgreSQL `order_db`.
+- Delivery Service: TypeScript / NestJS, порт 3000 — пока хранит данные в памяти.
 
-## Current scope
+## Что добавлено на этом этапе
 
-PostgreSQL is connected only to Supplier Service in this milestone.
-The database runs in Docker as `postgres-supplier`; its data is persisted
-in the `supplier-postgres-data` volume. Order and Delivery are intentionally
-unchanged and still keep data in process memory.
+Order Service использует Spring Data R2DBC и отдельный PostgreSQL. R2DBC сохраняет реактивную модель WebFlux, не переводя запросы к базе на блокирующий JDBC. Таблица `orders` создаётся из `order-service/src/main/resources/schema.sql` при старте.
 
-Kafka, Consul, API Gateway, Traefik, Auth integration, inter-service
-resilience, durable event history and the Outbox pattern are not included yet.
-We add and test those one at a time.
+Каждая база имеет собственный Docker volume:
 
-## First run
+- `supplier-postgres-data` — данные Supplier Service.
+- `order-postgres-data` — данные Order Service.
 
-Copy `.env.example` to `.env` (optional for local defaults; recommended):
+Сервисы не обращаются напрямую к таблицам друг друга.
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+## Запуск
 
-On Windows PowerShell, use:
+Из корня проекта:
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up --build
 ```
 
-## Check containers
+Если `.env` уже создан на предыдущем этапе, просто проверь, что в нём есть `ORDER_DB_USER` и `ORDER_DB_PASSWORD`.
 
-```bash
-docker compose ps
-docker compose logs -f postgres-supplier
-docker compose logs -f supplier-service
-```
-
-## API documentation and health
+## Проверка
 
 - Supplier Swagger: http://localhost:8000/docs
-- Supplier health (also checks DB): http://localhost:8000/health
+- Supplier health: http://localhost:8000/health
 - Order Swagger: http://localhost:8081/swagger-ui.html
-- Order health: http://localhost:8081/actuator/health
+- Order health (включая состояние БД): http://localhost:8081/actuator/health
 - Delivery Swagger: http://localhost:3000/docs
 - Delivery health: http://localhost:3000/api/deliveries/health
 
-## Test persistence
+Порты PostgreSQL на компьютере: Supplier — `localhost:5433`, Order — `localhost:5434`. Внутри Docker Order Service подключается к `postgres-order:5432/order_db`.
 
-1. Open Supplier Swagger and create a supplier (`POST /suppliers`).
-2. Create a product linked to that supplier (`POST /products`).
-3. Read them back with `GET /suppliers` and `GET /products`.
-4. Stop the containers with `docker compose down` (do not add `-v`).
-5. Start again with `docker compose up`.
-6. Read the lists again. The supplier and product should still exist.
+## Тест сохранения заказов
 
-## Database connection
+1. В Swagger Order Service выполни `POST /orders`.
+2. Скопируй возвращённый `id`.
+3. Выполни `GET /orders/{id}` и убедись, что заказ найден.
+4. Выполни `docker compose down` (без `-v`).
+5. Запусти `docker compose up` снова.
+6. Повтори `GET /orders/{id}` — заказ должен сохраниться.
 
-Inside Docker, Supplier Service connects to:
-`postgres-supplier:5432/supplier_db`
+**Не используй `docker compose down -v`, если хочешь сохранить данные:** флаг `-v` удаляет volumes.
 
-From the host machine, PostgreSQL is exposed at:
-`localhost:5433`
+## Логи
 
-The local development credentials are in `.env.example`. Do not use them
-outside a local learning environment.
+```bash
+docker compose ps
+docker compose logs -f postgres-order
+docker compose logs -f order-service
+```
 
-See `supplier-service/README.md` for service-specific details.
+## Что ещё не реализовано
+
+Delivery Service пока использует память. Kafka, Consul, API Gateway, Traefik, интеграция с Auth Service, межсервисные HTTP-вызовы, Circuit Breaker, идемпотентность, Outbox и полноценный SSE-поток будут отдельными следующими этапами.
+
+Учебные пароли из `.env.example` предназначены только для локального запуска.

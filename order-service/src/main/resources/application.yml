@@ -4,6 +4,13 @@ server:
 spring:
   application:
     name: order-service
+  r2dbc:
+    url: ${ORDER_DATABASE_URL:r2dbc:postgresql://localhost:5434/order_db}
+    username: ${ORDER_DB_USER:supplychain}
+    password: ${ORDER_DB_PASSWORD:supplychain_dev_password}
+  sql:
+    init:
+      mode: always
 
 management:
   endpoints:
@@ -14,6 +21,7 @@ management:
     health:
       probes:
         enabled: true
+      show-details: always
 
 springdoc:
   swagger-ui:

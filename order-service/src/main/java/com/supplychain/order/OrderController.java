@@ -7,18 +7,20 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/orders")
 public class OrderController {
-    private final ConcurrentHashMap<UUID, OrderDto> orders = new ConcurrentHashMap<>();
+    private final OrderService orderService;
+
+    public OrderController(OrderService orderService) {
+        this.orderService = orderService;
+    }
 
     public record CreateOrderRequest(
             @NotBlank String customerId,
@@ -45,28 +47,17 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<OrderDto> create(@Valid @RequestBody CreateOrderRequest request) {
-        UUID id = UUID.randomUUID();
-        OrderDto order = new OrderDto(
-                id, request.customerId(), request.productId(),
-                request.quantity(), request.deliveryAddress(),
-                "CREATED", Instant.now()
-        );
-        orders.put(id, order);
-        return Mono.just(order);
+        return orderService.create(request);
     }
 
     @GetMapping
     public Flux<OrderDto> list() {
-        return Flux.fromIterable(orders.values());
+        return orderService.list();
     }
 
     @GetMapping("/{id}")
     public Mono<OrderDto> get(@PathVariable UUID id) {
-        OrderDto order = orders.get(id);
-        if (order == null) {
-            return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
-        }
-        return Mono.just(order);
+        return orderService.get(id);
     }
 
     @PatchMapping("/{id}/status")
@@ -74,22 +65,13 @@ public class OrderController {
             @PathVariable UUID id,
             @RequestParam String status
     ) {
-        OrderDto old = orders.get(id);
-        if (old == null) {
-            return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
-        }
-        OrderDto updated = new OrderDto(
-                old.id(), old.customerId(), old.productId(), old.quantity(),
-                old.deliveryAddress(), status.toUpperCase(), old.createdAt()
-        );
-        orders.put(id, updated);
-        return Mono.just(updated);
+        return orderService.updateStatus(id, status);
     }
 
     // Учебный SSE endpoint: пока отдаёт текущее состояние как поток.
     // Позже подключим сюда Kafka-события и историю статусов из БД.
     @GetMapping(value = "/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<OrderDto> events(@PathVariable UUID id) {
-        return get(id).flux();
+        return orderService.get(id).flux();
     }
 }
