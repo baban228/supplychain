@@ -1,6 +1,11 @@
 server:
   port: 8080
 
+auth:
+  jwt:
+    # Must be exactly the same value as SECRET_KEY in Wolf Auth Service.
+    secret: ${AUTH_JWT_SECRET:local-dev-only-change-me-32-bytes-min}
+
 spring:
   application:
     name: api-gateway
@@ -32,6 +37,13 @@ spring:
           uri: ${DELIVERY_SERVICE_URL:http://delivery-service:3000}
           predicates:
             - Path=/api/deliveries,/api/deliveries/**
+
+        # Wolf Auth Service. Its Compose service name in this integrated project is "auth-service".
+        # If you rename it, set AUTH_SERVICE_URL to the new Compose service name and port.
+        - id: wolf-auth
+          uri: ${AUTH_SERVICE_URL:http://auth-service:3001}
+          predicates:
+            - Path=/auth,/auth/**,/users,/users/**,/roles,/roles/**,/friends,/friends/**,/notifications,/notifications/**,/achievements,/achievements/**,/health
 
 management:
   endpoints:

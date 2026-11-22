@@ -95,3 +95,86 @@ docker compose up --build
 ```
 
 At this stage Gateway performs routing only. JWT validation / Auth Service integration will be added in a separate step. The individual services and their Swagger pages remain directly accessible during development.
+
+
+## Wolf Auth Service — подключён
+
+В проект добавлен backend из `wolf_auth-master/server`. Frontend и Nginx из исходного Wolf Auth не добавлялись: для SupplyChain нужен именно API-микросервис.
+
+### Состав Auth Service
+
+- FastAPI / Python 3.11, внутренний порт `3001`.
+- Отдельная PostgreSQL 15, база `wolf_auth`.
+- Отдельный Docker volume `auth-postgres-data`.
+- Auth Service подключается к БД по внутреннему адресу `auth-postgres:5432`.
+- Gateway обращается к Auth Service по `http://auth-service:3001`.
+
+### Основные адреса
+
+- Auth Swagger: http://localhost:3001/docs
+- Auth health: http://localhost:3001/health
+- Auth через Gateway: http://localhost:8080/auth/...
+- Auth PostgreSQL на компьютере: `localhost:5440` (внутри Docker — `auth-postgres:5432`).
+
+### Запуск
+
+Скопируй `.env.example` в `.env` (если `.env` уже есть, добавь в него все переменные `AUTH_*`) и выполни из корня:
+
+```bash
+docker compose up --build
+```
+
+Compose сначала ждёт готовности четырёх PostgreSQL баз, затем запускает сервисы. Auth Service и его БД запускаются вместе с остальным проектом. Frontend/Nginx из Wolf Auth намеренно исключены, чтобы не конфликтовать с портами и не включать ненужный интерфейс.
+
+### JWT
+
+Исходный Auth Service подписывает токены алгоритмом `HS256`, помещает имя пользователя в claim `sub` и устанавливает `exp`. Gateway проверяет подпись и срок действия JWT.
+
+`AUTH_JWT_SECRET` в корневом `.env` должен совпадать с `SECRET_KEY` Auth Service. В Compose он передаётся обоим контейнерам автоматически. Пример в `.env.example` предназначен только для локальной разработки; замени его случайным секретом длиной не менее 32 UTF-8 байт. Не публикуй `.env` в Git.
+
+### API и вход
+
+- `POST /auth/register` — регистрация, JSON с `username`, `email`, `password` и необязательным `telegram`.
+- `POST /auth/login` — вход, **form URL-encoded**, поля `username` и `password`. В `username` можно передать email или username.
+- `GET /users/me` — профиль текущего пользователя, нужен `Authorization: Bearer <token>`.
+
+Пример входа через Gateway:
+
+```bash
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=your-password"
+```
+
+Пример защищённого запроса:
+
+```bash
+curl http://localhost:8080/api/orders \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+Регистрация и вход доступны без токена. Бизнес API (`/api/**`) и защищённые Auth endpoint'ы требуют действительный JWT. Без токена или с недействительным/истёкшим токеном Gateway возвращает `401 Unauthorized`.
+
+### Проверка и логи
+
+```bash
+docker compose ps
+docker compose logs -f auth-postgres
+docker compose logs -f auth-service
+docker compose logs -f api-gateway
+```
+
+Для остановки без удаления данных:
+
+```bash
+docker compose down
+```
+
+Не используй `docker compose down -v`, если хочешь сохранить данные PostgreSQL: эта команда удаляет volumes.
+
+### Важные замечания
+
+- Auth Service владеет только своей базой `wolf_auth`; другие сервисы не должны обращаться к ней напрямую.
+- Проверка JWT выполняется на Gateway. При текущем учебном режиме бизнес-порты доступны только на `127.0.0.1`; для production следует дополнительно закрыть прямой доступ к сервисам и БД.
+- В проекте пока не настроено разграничение по ролям/permissions для операций SupplyChain — сейчас проверяется подлинность и срок действия токена.
+- Исходный Auth Service создаёт таблицы при старте через `Base.metadata.create_all`; миграции Alembic в исходном проекте не настроены.

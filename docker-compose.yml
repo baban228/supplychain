@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: supplychain
       POSTGRES_PASSWORD: ${SUPPLIER_DB_PASSWORD:-supplychain_dev_password}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - supplier-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://supplychain:${SUPPLIER_DB_PASSWORD:-supplychain_dev_password}@postgres-supplier:5432/supplier_db
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres-supplier:
         condition: service_healthy
@@ -42,7 +42,7 @@ services:
       POSTGRES_USER: ${ORDER_DB_USER:-supplychain}
       POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD:-supplychain_dev_password}
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - order-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -60,7 +60,7 @@ services:
       ORDER_DB_USER: ${ORDER_DB_USER:-supplychain}
       ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-supplychain_dev_password}
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     depends_on:
       postgres-order:
         condition: service_healthy
@@ -78,7 +78,7 @@ services:
       POSTGRES_USER: ${DELIVERY_DB_USER:-supplychain}
       POSTGRES_PASSWORD: ${DELIVERY_DB_PASSWORD:-supplychain_dev_password}
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - delivery-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -98,7 +98,7 @@ services:
       DELIVERY_DB_PASSWORD: ${DELIVERY_DB_PASSWORD:-supplychain_dev_password}
       DELIVERY_DB_NAME: delivery_db
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       postgres-delivery:
         condition: service_healthy
@@ -108,11 +108,55 @@ services:
       timeout: 3s
       retries: 5
 
+
+  # Wolf Auth Service (backend only; frontend/nginx intentionally not included)
+  auth-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${AUTH_DB_USER:-wolf_auth}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-wolf_auth_dev_password}
+      POSTGRES_DB: ${AUTH_DB_NAME:-wolf_auth}
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  auth-service:
+    build: ./auth-service
+    environment:
+      DATABASE_URL: postgresql://${AUTH_DB_USER:-wolf_auth}:${AUTH_DB_PASSWORD:-wolf_auth_dev_password}@auth-postgres:5432/${AUTH_DB_NAME:-wolf_auth}
+      SECRET_KEY: ${AUTH_JWT_SECRET:-local-dev-only-change-me-32-bytes-min}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${AUTH_TOKEN_EXPIRE_MINUTES:-30}
+      DEBUG: "false"
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    healthcheck:
+      # Check that Uvicorn is listening; avoids depending on the current /health response body.
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1', 3001), 3); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
   api-gateway:
     build: ./api-gateway
     container_name: api-gateway
     ports:
       - "8080:8080"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:3001
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-local-dev-only-change-me-32-bytes-min}
     depends_on:
       supplier-service:
         condition: service_healthy
@@ -120,9 +164,12 @@ services:
         condition: service_healthy
       delivery-service:
         condition: service_healthy
+      auth-service:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   supplier-postgres-data:
   order-postgres-data:
   delivery-postgres-data:
+  auth-postgres-data:
