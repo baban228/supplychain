@@ -23,6 +23,12 @@ spring:
   sql:
     init:
       mode: always
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
 
 management:
   endpoints:
@@ -46,3 +52,6 @@ app:
     retry:
       max-attempts: ${SUPPLIER_RETRY_MAX_ATTEMPTS:3}
       wait-duration: ${SUPPLIER_RETRY_WAIT:300ms}
+  kafka:
+    outbox-poll-ms: ${KAFKA_OUTBOX_POLL_MS:1000}
+

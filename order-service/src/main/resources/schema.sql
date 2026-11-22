@@ -11,3 +11,17 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_product_id ON orders(product_id);
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    topic VARCHAR(200) NOT NULL,
+    payload TEXT NOT NULL,
+    published BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL,
+    published_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_unpublished
+    ON outbox_events(published, created_at);
+
+-- Upgrade an existing local database created by an earlier version of this project.
+ALTER TABLE outbox_events ALTER COLUMN id SET DEFAULT gen_random_uuid();

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DeliveryEntity } from './entities/delivery.entity';
+import { KafkaConsumerService } from './kafka/kafka-consumer.service';
 export { DeliveryStatus } from './entities/delivery.entity';
 
 @Module({
@@ -22,6 +23,6 @@ export { DeliveryStatus } from './entities/delivery.entity';
     TypeOrmModule.forFeature([DeliveryEntity]),
   ],
   controllers: [DeliveryController],
-  providers: [DeliveryService],
+  providers: [DeliveryService, KafkaConsumerService],
 })
 export class AppModule {}

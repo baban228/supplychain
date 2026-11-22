@@ -319,3 +319,96 @@ docker compose restart order-service
 **Важно:** этот этап проверяет наличие товара, но пока не резервирует и не уменьшает
 складской остаток. Защиту от гонок и атомарное резервирование добавим отдельным
 этапом вместе с событиями Kafka/Outbox.
+
+
+## Kafka — асинхронное создание доставки
+
+Добавлен Kafka broker в режиме KRaft (один узел для локальной разработки).
+Order Service публикует событие `OrderCreated` в topic `orders.created`.
+Delivery Service подписан на этот topic и автоматически создаёт доставку
+в собственной PostgreSQL.
+
+### Как работает сценарий
+
+1. Клиент отправляет `POST /api/orders` через API Gateway.
+2. Order Service синхронно проверяет наличие товара через Supplier Service.
+3. Order Service сохраняет заказ и событие в таблицу `outbox_events` одной
+   R2DBC-транзакцией.
+4. Фоновый Outbox Publisher отправляет событие в Kafka и помечает его опубликованным.
+5. Delivery Service получает событие и создаёт доставку.
+6. Доставка доступна через `GET /api/deliveries/by-order/{orderId}`.
+
+Outbox нужен, чтобы не потерять событие, если процесс Order Service завершится
+между сохранением заказа и отправкой в Kafka. Если публикация прошла, но отметка
+`published` не сохранилась, событие может быть отправлено повторно — consumer
+защищён от дубликатов уникальным индексом по `order_id` и проверкой существующей
+записи.
+
+### Запуск
+
+Из корневой папки проекта:
+
+```bash
+docker compose up --build
+```
+
+При первом запуске Docker соберёт Order и Delivery сервисы и поднимет Kafka.
+В Kafka UI в этом учебном проекте нет; topic `orders.created` создаётся
+автоматически при первой публикации.
+
+### Проверка
+
+1. Убедись, что все контейнеры запущены:
+
+   ```bash
+   docker compose ps
+   docker compose logs -f kafka
+   ```
+
+2. Создай заказ через `POST http://localhost:8080/api/orders` (JWT обязателен):
+
+   ```json
+   {
+     "customerId": "customer-001",
+     "productId": "UUID_СУЩЕСТВУЮЩЕГО_ТОВАРА",
+     "quantity": 2,
+     "deliveryAddress": "Riga, Latvia"
+   }
+   ```
+
+3. Из ответа скопируй `id` заказа.
+4. Подожди 1–3 секунды и запроси:
+
+   ```http
+   GET http://localhost:8080/api/deliveries/by-order/ORDER_ID
+   Authorization: Bearer YOUR_ACCESS_TOKEN
+   ```
+
+   Должна появиться доставка со статусом `CREATED`.
+
+5. Проверь логи:
+
+   ```bash
+   docker compose logs -f order-service
+   docker compose logs -f delivery-service
+   ```
+
+   В Order Service появится сообщение о публикации Outbox event, в Delivery Service —
+   о получении `OrderCreated`.
+
+### Проверка идемпотентности
+
+Повтори получение/обработку одного и того же события (например, перезапусти
+Delivery Service после того, как Kafka сохранила сообщение, или повторно отправь
+тестовое событие с тем же `orderId`). В `deliveries` должна остаться одна запись
+для данного заказа. Kafka работает с доставкой сообщений как минимум один раз;
+уникальный индекс БД гарантирует отсутствие повторной доставки для одного заказа.
+
+### Важные замечания
+
+- Order Service не подключается напрямую к Delivery Service.
+- У каждого сервиса остаётся собственная база данных.
+- Outbox Publisher отправляет события повторно при ошибках; неотправленные записи
+  остаются в `outbox_events`.
+- Kafka single-node без репликации подходит для локальной демонстрации, но не для production.
+- Не используй `docker compose down -v`, если хочешь сохранить данные и Kafka log volume.

@@ -1,31 +1,19 @@
-# Delivery Service (NestJS + PostgreSQL)
+# Delivery Service (NestJS + PostgreSQL + Kafka)
 
 Port: `3000`  
 Swagger UI: http://localhost:3000/docs  
-Health (includes DB check): http://localhost:3000/api/deliveries/health
+Health: http://localhost:3000/api/deliveries/health
 
-Delivery Service uses TypeORM with PostgreSQL. The database is independent:
-`delivery_db`, container `postgres-delivery`, host port `5435`, volume
-`delivery-postgres-data`.
+Delivery Service consumes `OrderCreated` events from Kafka topic `orders.created`.
+For every new order it creates one delivery record in its own PostgreSQL database.
+The database has a unique index on `order_id`, so replayed or duplicate Kafka
+messages do not create duplicate deliveries.
 
-## Run
+## Manual API
 
-From the repository root:
-
-```bash
-docker compose up --build
-```
-
-Docker Compose waits for PostgreSQL to become healthy before starting this service.
-TypeORM creates the table from the entity at startup (`synchronize: true`).
-This is suitable for a local learning project; before production, replace
-automatic synchronization with database migrations.
-
-## API
-
-- `POST /api/deliveries`
 - `GET /api/deliveries`
 - `GET /api/deliveries/by-order/{orderId}`
 - `GET /api/deliveries/{id}`
 - `PATCH /api/deliveries/{id}/status?status=IN_TRANSIT`
-- `GET /api/deliveries/health`
+
+`POST /api/deliveries` remains available for manual/testing purposes.

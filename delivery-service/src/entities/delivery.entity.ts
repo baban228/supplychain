@@ -15,7 +15,7 @@ export type DeliveryStatus =
   | 'CANCELLED';
 
 @Entity({ name: 'deliveries' })
-@Index('idx_deliveries_order_id', ['orderId'])
+@Index('uq_deliveries_order_id', ['orderId'], { unique: true })
 export class DeliveryEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
