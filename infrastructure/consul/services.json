@@ -1,0 +1,58 @@
+{
+  "services": [
+    {
+      "name": "supplier-service",
+      "id": "supplier-service-compose",
+      "address": "supplier-service",
+      "port": 8000,
+      "tags": [
+        "python",
+        "fastapi",
+        "business"
+      ],
+      "checks": [
+        {
+          "http": "http://supplier-service:8000/health",
+          "interval": "10s",
+          "timeout": "3s"
+        }
+      ]
+    },
+    {
+      "name": "delivery-service",
+      "id": "delivery-service-compose",
+      "address": "delivery-service",
+      "port": 3000,
+      "tags": [
+        "typescript",
+        "nestjs",
+        "business"
+      ],
+      "checks": [
+        {
+          "http": "http://delivery-service:3000/api/deliveries/health",
+          "interval": "10s",
+          "timeout": "3s"
+        }
+      ]
+    },
+    {
+      "name": "auth-service",
+      "id": "auth-service-compose",
+      "address": "auth-service",
+      "port": 3001,
+      "tags": [
+        "python",
+        "fastapi",
+        "auth"
+      ],
+      "checks": [
+        {
+          "http": "http://auth-service:3001/health",
+          "interval": "10s",
+          "timeout": "3s"
+        }
+      ]
+    }
+  ]
+}

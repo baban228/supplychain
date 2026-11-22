@@ -178,3 +178,56 @@ docker compose down
 - Проверка JWT выполняется на Gateway. При текущем учебном режиме бизнес-порты доступны только на `127.0.0.1`; для production следует дополнительно закрыть прямой доступ к сервисам и БД.
 - В проекте пока не настроено разграничение по ролям/permissions для операций SupplyChain — сейчас проверяется подлинность и срок действия токена.
 - Исходный Auth Service создаёт таблицы при старте через `Base.metadata.create_all`; миграции Alembic в исходном проекте не настроены.
+
+
+## Consul — Service Discovery
+
+В проект добавлен Consul в режиме single-node development agent. Web UI доступен на
+http://localhost:8500/ui.
+
+### Регистрация сервисов
+
+- `order-service` регистрируется в Consul автоматически через Spring Cloud Consul Discovery.
+- `api-gateway` также регистрируется автоматически.
+- `supplier-service`, `delivery-service` и `auth-service` регистрируются через
+  декларативные service definitions в `infrastructure/consul/services.json`.
+  Consul периодически проверяет их HTTP health endpoints.
+
+### Маршрутизация через Gateway
+
+Gateway использует `lb://...` URI и Spring Cloud LoadBalancer. Адреса экземпляров
+берутся из Consul, а не задаются статически в `application.yml`.
+
+- `lb://order-service`
+- `lb://supplier-service`
+- `lb://delivery-service`
+- `lb://auth-service`
+
+### Проверка
+
+1. Запусти из корня проекта:
+
+   ```bash
+   docker compose up --build
+   ```
+
+2. Открой Consul UI: http://localhost:8500/ui.
+3. Перейди в **Services**. Должны отображаться `api-gateway`, `order-service`,
+   `supplier-service`, `delivery-service` и `auth-service`.
+4. Убедись, что у сервисов статус **passing**.
+5. Проверь API через Gateway:
+
+   - `http://localhost:8080/api/orders`
+   - `http://localhost:8080/api/suppliers`
+   - `http://localhost:8080/api/products`
+   - `http://localhost:8080/api/deliveries`
+   - `http://localhost:8080/auth/...`
+
+### Важные замечания
+
+- Consul используется как реестр и health-check механизм. Python/NestJS/Auth сервисы
+  регистрируются конфигурацией Consul, без добавления Consul SDK в их исходный код.
+- Для реального production окружения вместо `-dev` нужно настроить полноценный
+  Consul cluster, ACL, TLS и устойчивое хранилище.
+- `consul-data` — отдельный volume. Не используй `docker compose down -v`, если
+  хочешь сохранить volumes PostgreSQL и Consul.

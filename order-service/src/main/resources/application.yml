@@ -4,6 +4,18 @@ server:
 spring:
   application:
     name: order-service
+  cloud:
+    consul:
+      host: ${CONSUL_HOST:consul}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: true
+        register: true
+        service-name: order-service
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        health-check-timeout: 5s
   r2dbc:
     url: ${ORDER_DATABASE_URL:r2dbc:postgresql://localhost:5434/order_db}
     username: ${ORDER_DB_USER:supplychain}

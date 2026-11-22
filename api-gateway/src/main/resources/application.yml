@@ -10,38 +10,51 @@ spring:
   application:
     name: api-gateway
   cloud:
+    consul:
+      host: ${CONSUL_HOST:consul}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: true
+        register: true
+        service-name: api-gateway
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        health-check-timeout: 5s
+        query-passing: true
+    loadbalancer:
+      cache:
+        enabled: true
     gateway:
       routes:
         - id: order-service
-          uri: ${ORDER_SERVICE_URL:http://order-service:8081}
+          uri: lb://order-service
           predicates:
             - Path=/api/orders,/api/orders/**
           filters:
             - StripPrefix=1
 
         - id: supplier-service
-          uri: ${SUPPLIER_SERVICE_URL:http://supplier-service:8000}
+          uri: lb://supplier-service
           predicates:
             - Path=/api/suppliers,/api/suppliers/**
           filters:
             - StripPrefix=1
 
         - id: supplier-products
-          uri: ${SUPPLIER_SERVICE_URL:http://supplier-service:8000}
+          uri: lb://supplier-service
           predicates:
             - Path=/api/products,/api/products/**
           filters:
             - StripPrefix=1
 
         - id: delivery-service
-          uri: ${DELIVERY_SERVICE_URL:http://delivery-service:3000}
+          uri: lb://delivery-service
           predicates:
             - Path=/api/deliveries,/api/deliveries/**
 
-        # Wolf Auth Service. Its Compose service name in this integrated project is "auth-service".
-        # If you rename it, set AUTH_SERVICE_URL to the new Compose service name and port.
         - id: wolf-auth
-          uri: ${AUTH_SERVICE_URL:http://auth-service:3001}
+          uri: lb://auth-service
           predicates:
             - Path=/auth,/auth/**,/users,/users/**,/roles,/roles/**,/friends,/friends/**,/notifications,/notifications/**,/achievements,/achievements/**,/health
 
