@@ -12,22 +12,42 @@ import java.util.UUID;
 @Service
 public class OrderService {
     private final OrderRepository repository;
+    private final SupplierClient supplierClient;
 
-    public OrderService(OrderRepository repository) {
+    public OrderService(OrderRepository repository, SupplierClient supplierClient) {
         this.repository = repository;
+        this.supplierClient = supplierClient;
     }
 
     public Mono<OrderController.OrderDto> create(OrderController.CreateOrderRequest request) {
-        OrderEntity order = new OrderEntity(
-                UUID.randomUUID(),
-                request.customerId(),
-                request.productId(),
-                request.quantity(),
-                request.deliveryAddress(),
-                "CREATED",
-                Instant.now()
-        );
-        return repository.save(order).map(this::toDto);
+        return supplierClient.checkAvailability(request.productId(), request.quantity())
+                .onErrorMap(SupplierProductNotFoundException.class,
+                        ex -> new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex))
+                .onErrorMap(SupplierUnavailableException.class,
+                        ex -> new ResponseStatusException(
+                                HttpStatus.SERVICE_UNAVAILABLE,
+                                "Cannot validate product availability right now",
+                                ex))
+                .flatMap(availability -> {
+                    if (!availability.available()) {
+                        return Mono.error(new ResponseStatusException(
+                                HttpStatus.CONFLICT,
+                                "Insufficient stock. Requested: " + availability.requestedQuantity()
+                                        + ", available: " + availability.availableQuantity()
+                        ));
+                    }
+
+                    OrderEntity order = new OrderEntity(
+                            UUID.randomUUID(),
+                            request.customerId(),
+                            request.productId(),
+                            request.quantity(),
+                            request.deliveryAddress(),
+                            "CREATED",
+                            Instant.now()
+                    );
+                    return repository.save(order).map(this::toDto);
+                });
     }
 
     public Flux<OrderController.OrderDto> list() {

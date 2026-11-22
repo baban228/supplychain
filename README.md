@@ -231,3 +231,91 @@ Gateway использует `lb://...` URI и Spring Cloud LoadBalancer. Адр
   Consul cluster, ACL, TLS и устойчивое хранилище.
 - `consul-data` — отдельный volume. Не используй `docker compose down -v`, если
   хочешь сохранить volumes PostgreSQL и Consul.
+
+
+## Синхронное взаимодействие Order Service → Supplier Service
+
+При создании заказа (`POST /api/orders` через Gateway) Order Service сначала
+обращается к Supplier Service по HTTP:
+
+`GET /products/{productId}/availability?quantity={quantity}`
+
+Order Service находит Supplier Service через Consul и Spring Cloud LoadBalancer
+(`http://supplier-service`), проверяет наличие нужного количества товара и только
+после успешной проверки сохраняет заказ в собственной PostgreSQL.
+
+Результаты проверки:
+
+- Товар существует и остатка достаточно — заказ сохраняется со статусом `CREATED`.
+- Товар не найден — API возвращает `404`.
+- Остатка недостаточно — API возвращает `409 Conflict`, заказ не создаётся.
+- Supplier Service временно недоступен — API возвращает `503 Service Unavailable`.
+
+### Надёжность HTTP-вызова
+
+- Timeout: по умолчанию `2s` на попытку.
+- Retry: до `3` попыток с паузой `300ms`; повторяются только сетевые ошибки,
+  тайм-ауты и ответы Supplier Service `5xx`. Ответы `4xx` не повторяются.
+- Circuit Breaker: окно из 10 вызовов, минимум 5 вызовов для расчёта,
+  открытие при доле ошибок 50%, период OPEN — 10 секунд, затем HALF_OPEN.
+- Когда Circuit Breaker открыт, Order Service возвращает `503`, не пытаясь
+  обращаться к Supplier Service.
+
+Настройки можно менять в `.env`:
+
+```env
+SUPPLIER_CLIENT_TIMEOUT=2s
+SUPPLIER_RETRY_MAX_ATTEMPTS=3
+SUPPLIER_RETRY_WAIT=300ms
+```
+
+### Проверка сценария
+
+1. Открой Supplier Swagger: http://localhost:8000/docs.
+2. Создай поставщика через `POST /suppliers`, сохрани его `id`.
+3. Создай товар через `POST /products`, укажи сохранённый `supplier_id`,
+   `price` и `quantity`, например `10`.
+4. Сохрани `id` созданного товара.
+5. Открой Gateway и создай заказ через `POST /api/orders`:
+
+```json
+{
+  "customerId": "customer-001",
+  "productId": "UUID_СОЗДАННОГО_ТОВАРА",
+  "quantity": 2,
+  "deliveryAddress": "Riga, Latvia"
+}
+```
+
+Передавай `Authorization: Bearer <JWT>`.
+
+6. Повтори запрос с `quantity` больше складского остатка — ожидается `409`,
+   и новый заказ не должен появиться в Order Service.
+7. Укажи несуществующий UUID товара — ожидается `404`.
+
+### Демонстрация отказоустойчивости
+
+Для учебной проверки можно временно остановить Supplier Service:
+
+```bash
+docker compose stop supplier-service
+```
+
+Затем несколько раз отправить `POST /api/orders`. После сетевых повторов
+Circuit Breaker должен перейти в OPEN, а Order Service — отвечать `503`.
+Верни сервис:
+
+```bash
+docker compose start supplier-service
+```
+
+После периода OPEN Circuit Breaker перейдёт в HALF_OPEN и сможет восстановить
+соединение. Для полного сброса состояния можно перезапустить Order Service:
+
+```bash
+docker compose restart order-service
+```
+
+**Важно:** этот этап проверяет наличие товара, но пока не резервирует и не уменьшает
+складской остаток. Защиту от гонок и атомарное резервирование добавим отдельным
+этапом вместе с событиями Kafka/Outbox.

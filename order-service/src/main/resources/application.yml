@@ -38,3 +38,11 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+app:
+  supplier:
+    client:
+      timeout: ${SUPPLIER_CLIENT_TIMEOUT:2s}
+    retry:
+      max-attempts: ${SUPPLIER_RETRY_MAX_ATTEMPTS:3}
+      wait-duration: ${SUPPLIER_RETRY_WAIT:300ms}
