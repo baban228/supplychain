@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -17,9 +18,11 @@ import java.util.UUID;
 @RequestMapping("/orders")
 public class OrderController {
     private final OrderService orderService;
+    private final OrderEventStreamService eventStream;
 
-    public OrderController(OrderService orderService) {
+    public OrderController(OrderService orderService, OrderEventStreamService eventStream) {
         this.orderService = orderService;
+        this.eventStream = eventStream;
     }
 
     public record CreateOrderRequest(
@@ -68,10 +71,26 @@ public class OrderController {
         return orderService.updateStatus(id, status);
     }
 
-    // Учебный SSE endpoint: пока отдаёт текущее состояние как поток.
-    // Позже подключим сюда Kafka-события и историю статусов из БД.
+    // Sends the current order snapshot, then streams delivery status changes from Kafka.
     @GetMapping(value = "/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<OrderDto> events(@PathVariable UUID id) {
-        return orderService.get(id).flux();
+    public Flux<ServerSentEvent<OrderEvent>> events(@PathVariable UUID id) {
+        return orderService.get(id).flatMapMany(order -> {
+            OrderEvent snapshot = new OrderEvent(
+                    "order-snapshot", order.id(), order.status(),
+                    "Current order state", order.createdAt());
+            return Flux.concat(
+                    reactor.core.publisher.Mono.just(toSse(snapshot)),
+                    eventStream.streamFor(id)
+                            .filter(event -> event.occurredAt().isAfter(order.createdAt()))
+                            .map(this::toSse)
+            );
+        });
+    }
+
+    private ServerSentEvent<OrderEvent> toSse(OrderEvent event) {
+        return ServerSentEvent.<OrderEvent>builder(event)
+                .id(event.orderId() + "-" + event.occurredAt().toEpochMilli())
+                .event(event.type())
+                .build();
     }
 }

@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { OnModuleInit } from '@nestjs/common';
 import { DeliveryEntity, DeliveryStatus } from './entities/delivery.entity';
+import { DeliveryEventsProducer } from './kafka/delivery-events.producer';
 
 export type Delivery = DeliveryEntity;
 
@@ -31,6 +31,7 @@ export class DeliveryService implements OnModuleInit {
     @InjectRepository(DeliveryEntity)
     private readonly deliveries: Repository<DeliveryEntity>,
     private readonly dataSource: DataSource,
+    private readonly eventsProducer: DeliveryEventsProducer,
   ) {}
 
   async create(input: {
@@ -42,7 +43,9 @@ export class DeliveryService implements OnModuleInit {
       ...input,
       status: 'CREATED',
     });
-    return this.deliveries.save(delivery);
+    const saved = await this.deliveries.save(delivery);
+    await this.eventsProducer.publishStatus(saved);
+    return saved;
   }
 
 
@@ -59,7 +62,9 @@ export class DeliveryService implements OnModuleInit {
         deliveryAddress: event.deliveryAddress,
         status: 'CREATED',
       });
-      return await this.deliveries.save(delivery);
+      const saved = await this.deliveries.save(delivery);
+      await this.eventsProducer.publishStatus(saved);
+      return saved;
     } catch (error) {
       // A unique DB constraint protects against concurrent/replayed Kafka messages.
       const duplicate = await this.deliveries.findOneBy({ orderId: event.orderId });
@@ -90,7 +95,9 @@ export class DeliveryService implements OnModuleInit {
   async updateStatus(id: string, status: DeliveryStatus): Promise<Delivery> {
     const delivery = await this.findOne(id);
     delivery.status = status;
-    return this.deliveries.save(delivery);
+    const saved = await this.deliveries.save(delivery);
+    await this.eventsProducer.publishStatus(saved);
+    return saved;
   }
 
   async databaseHealth(): Promise<{ status: string }> {

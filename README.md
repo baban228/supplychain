@@ -412,3 +412,54 @@ Delivery Service после того, как Kafka сохранила сообщ
   остаются в `outbox_events`.
 - Kafka single-node без репликации подходит для локальной демонстрации, но не для production.
 - Не используй `docker compose down -v`, если хочешь сохранить данные и Kafka log volume.
+
+
+## Реактивный сценарий: SSE + Kafka
+
+Добавлен поток обновлений заказа через Server-Sent Events (SSE).
+
+1. Клиент создаёт заказ через `POST /api/orders`.
+2. Order Service сохраняет заказ и outbox-событие одной R2DBC-транзакцией.
+3. Outbox Publisher отправляет `OrderCreated` в Kafka topic `orders.created`.
+4. Delivery Service получает событие, создаёт доставку и публикует её статус
+   в topic `deliveries.status.updated`.
+5. Order Service получает событие статуса доставки через `@KafkaListener` и
+   передаёт его подписанным SSE-клиентам через Spring WebFlux.
+6. Изменения статуса через `PATCH /api/deliveries/{id}/status` также публикуются
+   в Kafka и появляются в SSE-потоке заказа.
+
+### Подключение к SSE
+
+```powershell
+curl.exe -N -H "Authorization: Bearer YOUR_ACCESS_TOKEN" `
+  -H "Accept: text/event-stream" `
+  http://localhost:8080/api/orders/ORDER_ID/events
+```
+
+Сначала придёт событие `order-snapshot` с текущим состоянием заказа. Затем,
+после создания доставки, придёт `delivery-status` со статусом `CREATED`.
+
+### Проверка обновления статуса
+
+1. Получи доставку: `GET /api/deliveries/by-order/ORDER_ID`.
+2. Скопируй её `id`.
+3. Измени статус:
+
+   `PATCH /api/deliveries/DELIVERY_ID/status?status=IN_TRANSIT`
+
+4. В открытом SSE-подключении появится событие `delivery-status` со статусом
+   `IN_TRANSIT`. Повтори для `DELIVERED`.
+
+### Логи
+
+```powershell
+docker logs -f delivery-service
+docker logs -f order-service
+```
+
+Ограничения: SSE-буфер хранит последние 1000 событий в памяти одного экземпляра
+Order Service и очищается при перезапуске. Текущий снимок заказа при новом
+подключении всё равно отправляется. Публикация delivery status выполняется
+напрямую после сохранения записи; при недоступности Kafka изменение доставки
+сохранится, но SSE-уведомление может быть потеряно. Для production рекомендуется
+отдельный transactional outbox и в Delivery Service.

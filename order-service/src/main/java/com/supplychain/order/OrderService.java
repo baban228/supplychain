@@ -20,15 +20,18 @@ public class OrderService {
     private final OutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
     private final TransactionalOperator transactionalOperator;
+    private final OrderEventStreamService eventStream;
 
     public OrderService(OrderRepository repository, SupplierClient supplierClient,
                         OutboxRepository outboxRepository, ObjectMapper objectMapper,
-                        TransactionalOperator transactionalOperator) {
+                        TransactionalOperator transactionalOperator,
+                        OrderEventStreamService eventStream) {
         this.repository = repository;
         this.supplierClient = supplierClient;
         this.outboxRepository = outboxRepository;
         this.objectMapper = objectMapper;
         this.transactionalOperator = transactionalOperator;
+        this.eventStream = eventStream;
     }
 
     public Mono<OrderController.OrderDto> create(OrderController.CreateOrderRequest request) {
@@ -53,7 +56,10 @@ public class OrderService {
                     return repository.save(order)
                             .flatMap(saved -> createOutboxEvent(saved).thenReturn(saved))
                             .as(transactionalOperator::transactional)
-                            .map(this::toDto);
+                            .map(this::toDto)
+                            .doOnNext(dto -> eventStream.publish(new OrderEvent(
+                                    "order-created", dto.id(), dto.status(),
+                                    "Order successfully created", dto.createdAt())));
                 });
     }
 
