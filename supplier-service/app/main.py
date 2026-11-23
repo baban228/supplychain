@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+import re
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -28,6 +30,23 @@ app = FastAPI(
     description="Поставщики, товары и проверка складских остатков",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", "")
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", request_id):
+        request_id = str(uuid4())
+
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.get("/gateway-openapi.json", include_in_schema=False)
+def gateway_openapi():
+    schema = {**app.openapi(), "servers": [{"url": "/api"}]}
+    return JSONResponse(schema)
 
 
 @app.get("/health")

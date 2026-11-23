@@ -1,10 +1,11 @@
-# SupplyChain — три бизнес-сервиса, отдельные базы данных и API Gateway
+# SupplyChain — микросервисы, Traefik и API Gateway
 
-В проекте три бизнес-сервиса:
+В проекте четыре микросервиса:
 
 - Supplier Service: Python / FastAPI, порт 8000 — PostgreSQL `supplier_db`.
 - Order Service: Java 17 / Spring Boot WebFlux, порт 8081 — PostgreSQL `order_db`.
 - Delivery Service: TypeScript / NestJS, порт 3000 — PostgreSQL `delivery_db`.
+- Auth Service: Python / FastAPI, порт 3001 — PostgreSQL `wolf_auth`.
 
 ## Что добавлено на этом этапе
 
@@ -27,15 +28,19 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
+После запуска открой веб-интерфейс: http://localhost (через Traefik) или http://localhost:5173 (напрямую через Nginx).
+
 Если `.env` уже создан на предыдущем этапе, проверь, что в нём есть переменные для всех трёх баз данных.
 
 ## Проверка
 
-- Supplier Swagger: http://localhost:8000/docs
+- Traefik — единая точка входа: http://localhost
+- Общий Swagger UI (все четыре сервиса): http://localhost/swagger-ui.html
+- Supplier Swagger напрямую: http://localhost:8000/docs
 - Supplier health: http://localhost:8000/health
-- Order Swagger: http://localhost:8081/swagger-ui.html
+- Order Swagger напрямую: http://localhost:8081/swagger-ui.html
 - Order health (включая состояние БД): http://localhost:8081/actuator/health
-- Delivery Swagger: http://localhost:3000/docs
+- Delivery Swagger напрямую: http://localhost:3000/docs
 - Delivery health: http://localhost:3000/api/deliveries/health
 
 Порты PostgreSQL на компьютере: Supplier — `localhost:5433`, Order — `localhost:5434`, Delivery — `localhost:5435`. Внутри Docker каждый сервис подключается к своей базе по имени контейнера.
@@ -59,9 +64,20 @@ docker compose logs -f postgres-order
 docker compose logs -f order-service
 ```
 
-## Что ещё не реализовано
+## Traefik, Gateway и Request ID
 
-Пока не реализованы Kafka, Consul, Traefik, интеграция с Auth Service, межсервисные HTTP-вызовы, Circuit Breaker, идемпотентность, Outbox и полноценный SSE-поток. API Gateway добавлен на этом этапе и пока выполняет маршрутизацию без проверки JWT.
+Внешние запросы проходят через Traefik (`http://localhost`) в API Gateway, который маршрутизирует их к сервисам. Swagger UI на `http://localhost/swagger-ui.html` объединяет спецификации Order, Supplier, Delivery и Auth.
+
+Gateway назначает UUID в заголовке `X-Request-ID`, если запрос не содержит допустимого значения, либо сохраняет переданный ID. Он передаётся микросервисам и возвращается в заголовке ответа; Order Service также передаёт его при HTTP-вызове Supplier Service.
+
+Для ручной проверки:
+
+```bash
+curl -i http://localhost/api/suppliers \
+  -H "X-Request-ID: demo-request-123"
+```
+
+В ответе должен быть `X-Request-ID: demo-request-123`. Если заголовок отсутствует или некорректен, Gateway сгенерирует новый UUID.
 
 Учебные пароли из `.env.example` предназначены только для локального запуска.
 
@@ -77,7 +93,7 @@ communication will be implemented through HTTP and Kafka in later milestones.
 
 ## API Gateway
 
-The project includes a Spring Cloud Gateway service on port `8080`. It is the single HTTP entry point for the business APIs:
+Spring Cloud Gateway is available behind Traefik on port `80` (and directly on port `8080` for local debugging):
 
 | Gateway URL | Routed service | Internal path |
 |---|---|---|
@@ -86,7 +102,7 @@ The project includes a Spring Cloud Gateway service on port `8080`. It is the si
 | `http://localhost:8080/api/products` | Supplier Service | `/products` |
 | `http://localhost:8080/api/deliveries` | Delivery Service | `/api/deliveries` |
 
-Gateway health: `http://localhost:8080/actuator/health`.
+Gateway health: `http://localhost/actuator/health`.
 
 Start or rebuild the stack from the project root:
 
@@ -94,7 +110,7 @@ Start or rebuild the stack from the project root:
 docker compose up --build
 ```
 
-At this stage Gateway performs routing only. JWT validation / Auth Service integration will be added in a separate step. The individual services and their Swagger pages remain directly accessible during development.
+Gateway validates JWTs for protected business APIs. Registration and login remain public. The individual services and their Swagger pages remain directly accessible during development.
 
 
 ## Wolf Auth Service — подключён

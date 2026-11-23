@@ -31,6 +31,12 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers("/actuator/health", "/actuator/health/**", "/health").permitAll()
+                        .pathMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/webjars/**"
+                        ).permitAll()
                         // Registration and login must be available before a user has a token.
                         .pathMatchers("/auth/register", "/auth/login").permitAll()
                         // Business APIs and authenticated Auth Service endpoints.

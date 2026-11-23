@@ -32,6 +32,13 @@ def get_notifications(skip: int = 0, limit: int = 20,
         "total": len(notifications)
     }
 
+@router.get("/unread_count")
+def unread_count(current_user: User = Depends(get_current_user), db_s: Session = Depends(db.get_db)):
+    count = db_s.query(Notification)\
+        .filter_by(id_user=current_user.id, is_read=0).count()
+
+    return {"unread_count": count}
+
 @router.get("/{id}")
 def get_notification(id: int, current_user: User = Depends(get_current_user), db_s: Session = Depends(db.get_db)):
     n = db_s.query(Notification).filter_by(id=id, id_user=current_user.id).first()
@@ -70,10 +77,3 @@ def mark_read(data: dict, current_user: User = Depends(get_current_user), db_s: 
 
     db_s.commit()
     return {"marked_count": updated, "message": "Notifications marked as read"}
-
-@router.get("/unread_count")
-def unread_count(current_user: User = Depends(get_current_user), db_s: Session = Depends(db.get_db)):
-    count = db_s.query(Notification)\
-        .filter_by(id_user=current_user.id, is_read=0).count()
-
-    return {"unread_count": count}

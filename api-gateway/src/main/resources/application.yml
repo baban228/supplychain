@@ -27,6 +27,34 @@ spring:
         enabled: true
     gateway:
       routes:
+        - id: order-openapi
+          uri: lb://order-service
+          predicates:
+            - Path=/v3/api-docs/order
+          filters:
+            - SetPath=/v3/api-docs/gateway
+
+        - id: supplier-openapi
+          uri: lb://supplier-service
+          predicates:
+            - Path=/v3/api-docs/supplier
+          filters:
+            - SetPath=/gateway-openapi.json
+
+        - id: delivery-openapi
+          uri: lb://delivery-service
+          predicates:
+            - Path=/v3/api-docs/delivery
+          filters:
+            - SetPath=/docs-json
+
+        - id: auth-openapi
+          uri: lb://auth-service
+          predicates:
+            - Path=/v3/api-docs/auth
+          filters:
+            - SetPath=/openapi.json
+
         - id: order-service
           uri: lb://order-service
           predicates:
@@ -57,6 +85,21 @@ spring:
           uri: lb://auth-service
           predicates:
             - Path=/auth,/auth/**,/users,/users/**,/roles,/roles/**,/friends,/friends/**,/notifications,/notifications/**,/achievements,/achievements/**,/health
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+    urls:
+      - name: Order Service
+        url: /v3/api-docs/order
+      - name: Supplier Service
+        url: /v3/api-docs/supplier
+      - name: Delivery Service
+        url: /v3/api-docs/delivery
+      - name: Auth Service
+        url: /v3/api-docs/auth
+    urls-primary-name: Order Service
 
 management:
   endpoints:

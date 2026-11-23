@@ -1,5 +1,8 @@
 package com.supplychain.order;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -73,6 +76,14 @@ public class OrderController {
 
     // Sends the current order snapshot, then streams delivery status changes from Kafka.
     @GetMapping(value = "/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @ApiResponse(
+            responseCode = "200",
+            description = "Order snapshot followed by order status events",
+            content = @Content(
+                    mediaType = MediaType.TEXT_EVENT_STREAM_VALUE,
+                    schema = @Schema(implementation = OrderEvent.class)
+            )
+    )
     public Flux<ServerSentEvent<OrderEvent>> events(@PathVariable UUID id) {
         return orderService.get(id).flatMapMany(order -> {
             OrderEvent snapshot = new OrderEvent(
