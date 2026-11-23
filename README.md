@@ -28,33 +28,7 @@ Copy-Item .env.example .env
 docker compose up --build
 ```
 
-После запуска открой веб-интерфейс: http://localhost (через Traefik) или http://localhost:5173 (напрямую через Nginx).
-
-Если `.env` уже создан на предыдущем этапе, проверь, что в нём есть переменные для всех трёх баз данных.
-
-## Проверка
-
-- Traefik — единая точка входа: http://localhost
-- Общий Swagger UI (все четыре сервиса): http://localhost/swagger-ui.html
-- Supplier Swagger напрямую: http://localhost:8000/docs
-- Supplier health: http://localhost:8000/health
-- Order Swagger напрямую: http://localhost:8081/swagger-ui.html
-- Order health (включая состояние БД): http://localhost:8081/actuator/health
-- Delivery Swagger напрямую: http://localhost:3000/docs
-- Delivery health: http://localhost:3000/api/deliveries/health
-
-Порты PostgreSQL на компьютере: Supplier — `localhost:5433`, Order — `localhost:5434`, Delivery — `localhost:5435`. Внутри Docker каждый сервис подключается к своей базе по имени контейнера.
-
-## Тест сохранения заказов
-
-1. В Swagger Order Service выполни `POST /orders`.
-2. Скопируй возвращённый `id`.
-3. Выполни `GET /orders/{id}` и убедись, что заказ найден.
-4. Выполни `docker compose down` (без `-v`).
-5. Запусти `docker compose up` снова.
-6. Повтори `GET /orders/{id}` — заказ должен сохраниться.
-
-**Не используй `docker compose down -v`, если хочешь сохранить данные:** флаг `-v` удаляет volumes.
+После запуска веб-интерфейс: http://localhost (через Traefik) или http://localhost:5173 (напрямую через Nginx).
 
 ## Логи
 
@@ -77,23 +51,15 @@ curl -i http://localhost/api/suppliers \
   -H "X-Request-ID: demo-request-123"
 ```
 
-В ответе должен быть `X-Request-ID: demo-request-123`. Если заголовок отсутствует или некорректен, Gateway сгенерирует новый UUID.
-
-Учебные пароли из `.env.example` предназначены только для локального запуска.
-
-
 ## Database ownership
 
-- Supplier Service owns `supplier_db` (host port 5433).
-- Order Service owns `order_db` (host port 5434).
-- Delivery Service owns `delivery_db` (host port 5435).
-
-Do not let one service query another service's database directly. Inter-service
-communication will be implemented through HTTP and Kafka in later milestones.
+- Supplier Service владеет `supplier_db` (host port 5433).
+- Order Service владеет `order_db` (host port 5434).
+- Delivery Service владеет `delivery_db` (host port 5435).
 
 ## API Gateway
 
-Spring Cloud Gateway is available behind Traefik on port `80` (and directly on port `8080` for local debugging):
+Spring Cloud Gateway доступен за Traefik на порту `80` (и напрямую на порту `8080` для локальной отладки):
 
 | Gateway URL | Routed service | Internal path |
 |---|---|---|
@@ -104,14 +70,11 @@ Spring Cloud Gateway is available behind Traefik on port `80` (and directly on p
 
 Gateway health: `http://localhost/actuator/health`.
 
-Start or rebuild the stack from the project root:
+Запустить или пересобрать стек из корня проекта:
 
 ```bash
 docker compose up --build
 ```
-
-Gateway validates JWTs for protected business APIs. Registration and login remain public. The individual services and their Swagger pages remain directly accessible during development.
-
 
 ## Wolf Auth Service — подключён
 
@@ -134,8 +97,6 @@ Gateway validates JWTs for protected business APIs. Registration and login remai
 
 ### Запуск
 
-Скопируй `.env.example` в `.env` (если `.env` уже есть, добавь в него все переменные `AUTH_*`) и выполни из корня:
-
 ```bash
 docker compose up --build
 ```
@@ -146,7 +107,7 @@ Compose сначала ждёт готовности четырёх PostgreSQL �
 
 Исходный Auth Service подписывает токены алгоритмом `HS256`, помещает имя пользователя в claim `sub` и устанавливает `exp`. Gateway проверяет подпись и срок действия JWT.
 
-`AUTH_JWT_SECRET` в корневом `.env` должен совпадать с `SECRET_KEY` Auth Service. В Compose он передаётся обоим контейнерам автоматически. Пример в `.env.example` предназначен только для локальной разработки; замени его случайным секретом длиной не менее 32 UTF-8 байт. Не публикуй `.env` в Git.
+`AUTH_JWT_SECRET` в корневом `.env` должен совпадать с `SECRET_KEY` Auth Service. В Compose он передаётся обоим контейнерам автоматически.
 
 ### API и вход
 
@@ -171,31 +132,6 @@ curl http://localhost:8080/api/orders \
 
 Регистрация и вход доступны без токена. Бизнес API (`/api/**`) и защищённые Auth endpoint'ы требуют действительный JWT. Без токена или с недействительным/истёкшим токеном Gateway возвращает `401 Unauthorized`.
 
-### Проверка и логи
-
-```bash
-docker compose ps
-docker compose logs -f auth-postgres
-docker compose logs -f auth-service
-docker compose logs -f api-gateway
-```
-
-Для остановки без удаления данных:
-
-```bash
-docker compose down
-```
-
-Не используй `docker compose down -v`, если хочешь сохранить данные PostgreSQL: эта команда удаляет volumes.
-
-### Важные замечания
-
-- Auth Service владеет только своей базой `wolf_auth`; другие сервисы не должны обращаться к ней напрямую.
-- Проверка JWT выполняется на Gateway. При текущем учебном режиме бизнес-порты доступны только на `127.0.0.1`; для production следует дополнительно закрыть прямой доступ к сервисам и БД.
-- В проекте пока не настроено разграничение по ролям/permissions для операций SupplyChain — сейчас проверяется подлинность и срок действия токена.
-- Исходный Auth Service создаёт таблицы при старте через `Base.metadata.create_all`; миграции Alembic в исходном проекте не настроены.
-
-
 ## Consul — Service Discovery
 
 В проект добавлен Consul в режиме single-node development agent. Web UI доступен на
@@ -219,36 +155,6 @@ Gateway использует `lb://...` URI и Spring Cloud LoadBalancer. Адр
 - `lb://delivery-service`
 - `lb://auth-service`
 
-### Проверка
-
-1. Запусти из корня проекта:
-
-   ```bash
-   docker compose up --build
-   ```
-
-2. Открой Consul UI: http://localhost:8500/ui.
-3. Перейди в **Services**. Должны отображаться `api-gateway`, `order-service`,
-   `supplier-service`, `delivery-service` и `auth-service`.
-4. Убедись, что у сервисов статус **passing**.
-5. Проверь API через Gateway:
-
-   - `http://localhost:8080/api/orders`
-   - `http://localhost:8080/api/suppliers`
-   - `http://localhost:8080/api/products`
-   - `http://localhost:8080/api/deliveries`
-   - `http://localhost:8080/auth/...`
-
-### Важные замечания
-
-- Consul используется как реестр и health-check механизм. Python/NestJS/Auth сервисы
-  регистрируются конфигурацией Consul, без добавления Consul SDK в их исходный код.
-- Для реального production окружения вместо `-dev` нужно настроить полноценный
-  Consul cluster, ACL, TLS и устойчивое хранилище.
-- `consul-data` — отдельный volume. Не используй `docker compose down -v`, если
-  хочешь сохранить volumes PostgreSQL и Consul.
-
-
 ## Синхронное взаимодействие Order Service → Supplier Service
 
 При создании заказа (`POST /api/orders` через Gateway) Order Service сначала
@@ -259,13 +165,6 @@ Gateway использует `lb://...` URI и Spring Cloud LoadBalancer. Адр
 Order Service находит Supplier Service через Consul и Spring Cloud LoadBalancer
 (`http://supplier-service`), проверяет наличие нужного количества товара и только
 после успешной проверки сохраняет заказ в собственной PostgreSQL.
-
-Результаты проверки:
-
-- Товар существует и остатка достаточно — заказ сохраняется со статусом `CREATED`.
-- Товар не найден — API возвращает `404`.
-- Остатка недостаточно — API возвращает `409 Conflict`, заказ не создаётся.
-- Supplier Service временно недоступен — API возвращает `503 Service Unavailable`.
 
 ### Надёжность HTTP-вызова
 
@@ -285,58 +184,6 @@ SUPPLIER_RETRY_MAX_ATTEMPTS=3
 SUPPLIER_RETRY_WAIT=300ms
 ```
 
-### Проверка сценария
-
-1. Открой Supplier Swagger: http://localhost:8000/docs.
-2. Создай поставщика через `POST /suppliers`, сохрани его `id`.
-3. Создай товар через `POST /products`, укажи сохранённый `supplier_id`,
-   `price` и `quantity`, например `10`.
-4. Сохрани `id` созданного товара.
-5. Открой Gateway и создай заказ через `POST /api/orders`:
-
-```json
-{
-  "customerId": "customer-001",
-  "productId": "UUID_СОЗДАННОГО_ТОВАРА",
-  "quantity": 2,
-  "deliveryAddress": "Riga, Latvia"
-}
-```
-
-Передавай `Authorization: Bearer <JWT>`.
-
-6. Повтори запрос с `quantity` больше складского остатка — ожидается `409`,
-   и новый заказ не должен появиться в Order Service.
-7. Укажи несуществующий UUID товара — ожидается `404`.
-
-### Демонстрация отказоустойчивости
-
-Для учебной проверки можно временно остановить Supplier Service:
-
-```bash
-docker compose stop supplier-service
-```
-
-Затем несколько раз отправить `POST /api/orders`. После сетевых повторов
-Circuit Breaker должен перейти в OPEN, а Order Service — отвечать `503`.
-Верни сервис:
-
-```bash
-docker compose start supplier-service
-```
-
-После периода OPEN Circuit Breaker перейдёт в HALF_OPEN и сможет восстановить
-соединение. Для полного сброса состояния можно перезапустить Order Service:
-
-```bash
-docker compose restart order-service
-```
-
-**Важно:** этот этап проверяет наличие товара, но пока не резервирует и не уменьшает
-складской остаток. Защиту от гонок и атомарное резервирование добавим отдельным
-этапом вместе с событиями Kafka/Outbox.
-
-
 ## Kafka — асинхронное создание доставки
 
 Добавлен Kafka broker в режиме KRaft (один узел для локальной разработки).
@@ -354,12 +201,6 @@ Delivery Service подписан на этот topic и автоматичес�
 5. Delivery Service получает событие и создаёт доставку.
 6. Доставка доступна через `GET /api/deliveries/by-order/{orderId}`.
 
-Outbox нужен, чтобы не потерять событие, если процесс Order Service завершится
-между сохранением заказа и отправкой в Kafka. Если публикация прошла, но отметка
-`published` не сохранилась, событие может быть отправлено повторно — consumer
-защищён от дубликатов уникальным индексом по `order_id` и проверкой существующей
-записи.
-
 ### Запуск
 
 Из корневой папки проекта:
@@ -371,64 +212,6 @@ docker compose up --build
 При первом запуске Docker соберёт Order и Delivery сервисы и поднимет Kafka.
 В Kafka UI в этом учебном проекте нет; topic `orders.created` создаётся
 автоматически при первой публикации.
-
-### Проверка
-
-1. Убедись, что все контейнеры запущены:
-
-   ```bash
-   docker compose ps
-   docker compose logs -f kafka
-   ```
-
-2. Создай заказ через `POST http://localhost:8080/api/orders` (JWT обязателен):
-
-   ```json
-   {
-     "customerId": "customer-001",
-     "productId": "UUID_СУЩЕСТВУЮЩЕГО_ТОВАРА",
-     "quantity": 2,
-     "deliveryAddress": "Riga, Latvia"
-   }
-   ```
-
-3. Из ответа скопируй `id` заказа.
-4. Подожди 1–3 секунды и запроси:
-
-   ```http
-   GET http://localhost:8080/api/deliveries/by-order/ORDER_ID
-   Authorization: Bearer YOUR_ACCESS_TOKEN
-   ```
-
-   Должна появиться доставка со статусом `CREATED`.
-
-5. Проверь логи:
-
-   ```bash
-   docker compose logs -f order-service
-   docker compose logs -f delivery-service
-   ```
-
-   В Order Service появится сообщение о публикации Outbox event, в Delivery Service —
-   о получении `OrderCreated`.
-
-### Проверка идемпотентности
-
-Повтори получение/обработку одного и того же события (например, перезапусти
-Delivery Service после того, как Kafka сохранила сообщение, или повторно отправь
-тестовое событие с тем же `orderId`). В `deliveries` должна остаться одна запись
-для данного заказа. Kafka работает с доставкой сообщений как минимум один раз;
-уникальный индекс БД гарантирует отсутствие повторной доставки для одного заказа.
-
-### Важные замечания
-
-- Order Service не подключается напрямую к Delivery Service.
-- У каждого сервиса остаётся собственная база данных.
-- Outbox Publisher отправляет события повторно при ошибках; неотправленные записи
-  остаются в `outbox_events`.
-- Kafka single-node без репликации подходит для локальной демонстрации, но не для production.
-- Не используй `docker compose down -v`, если хочешь сохранить данные и Kafka log volume.
-
 
 ## Реактивный сценарий: SSE + Kafka
 
@@ -444,28 +227,6 @@ Delivery Service после того, как Kafka сохранила сообщ
 6. Изменения статуса через `PATCH /api/deliveries/{id}/status` также публикуются
    в Kafka и появляются в SSE-потоке заказа.
 
-### Подключение к SSE
-
-```powershell
-curl.exe -N -H "Authorization: Bearer YOUR_ACCESS_TOKEN" `
-  -H "Accept: text/event-stream" `
-  http://localhost:8080/api/orders/ORDER_ID/events
-```
-
-Сначала придёт событие `order-snapshot` с текущим состоянием заказа. Затем,
-после создания доставки, придёт `delivery-status` со статусом `CREATED`.
-
-### Проверка обновления статуса
-
-1. Получи доставку: `GET /api/deliveries/by-order/ORDER_ID`.
-2. Скопируй её `id`.
-3. Измени статус:
-
-   `PATCH /api/deliveries/DELIVERY_ID/status?status=IN_TRANSIT`
-
-4. В открытом SSE-подключении появится событие `delivery-status` со статусом
-   `IN_TRANSIT`. Повтори для `DELIVERED`.
-
 ### Логи
 
 ```powershell
@@ -473,9 +234,3 @@ docker logs -f delivery-service
 docker logs -f order-service
 ```
 
-Ограничения: SSE-буфер хранит последние 1000 событий в памяти одного экземпляра
-Order Service и очищается при перезапуске. Текущий снимок заказа при новом
-подключении всё равно отправляется. Публикация delivery status выполняется
-напрямую после сохранения записи; при недоступности Kafka изменение доставки
-сохранится, но SSE-уведомление может быть потеряно. Для production рекомендуется
-отдельный transactional outbox и в Delivery Service.
